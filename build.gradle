@@ -1,0 +1,44 @@
+// Gradle-Plugins fuer dieses Projekt auswaehlen
+plugins {
+    // Java-Applikation bauen
+    id 'application'
+
+    // Plugin fuer JavaFX-Projekte
+    id 'org.openjfx.javafxplugin' version '0.1.0'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+// Paketpfad und Namen Ihrer "main"-Klasse, bitte ggf. anpassen
+    mainClass = "geldautomat.GeldautomatApp"
+}
+
+
+// Verwendung des FX-Plugins: FX-Version und Module wuenschen
+javafx {
+    version = "21"
+    modules = [ 'javafx.controls', 'javafx.fxml' ]
+}
+
+dependencies {
+    // Zusaetzlich benuetigte Abhaengigkeiten für GraalPy Python Support
+    implementation 'org.graalvm.polyglot:polyglot:25.0.3'
+    
+    // BOM (bill of materials) für alle GraalVM-Module (würde für reinen Gradle Build ausreichen)
+    // implementation 'org.graalvm.polyglot:python:25.0.3'
+    
+    // Konkrete Module statt BOM, damit VS Code mit weniger Konfigurationskram funktioniert
+    implementation 'org.graalvm.python:python-language:25.0.3'
+}
+
+// Abhaengigkeiten herunterladen von... 
+repositories {
+    mavenCentral()
+}
+
+
