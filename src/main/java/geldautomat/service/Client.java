@@ -6,25 +6,18 @@ import java.net.Socket;
 public class Client
 {
 
-	public static Client client;
+	// public static Client client;
 
 	private Socket socket;
 	private BufferedWriter writer;
 	private BufferedReader reader;
 
-	public Client()	{
-		try
-		{
-			socket = new Socket("localhost", 27999);
-			System.out.println("Client connected end with \"END\"");
+	public Client()	throws IOException {
+		socket = new Socket("localhost", 27999);
+		System.out.println("Client connected end with \"END\"");
 
-			writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-			reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-		}
-		catch (IOException e)
-		{
-			e.printStackTrace();
-		}
+		writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+		reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 	}
 
 	public String sendText(final Message msg) {
@@ -67,7 +60,8 @@ public class Client
 		return sendText(msg);
 	}
 
-	public String withdraw(final int amount, final String transactionId) {
+	public String withdraw(final int amount) {
+		String transactionId = "T" + System.currentTimeMillis();
 		String line = "WITHDRAW " + amount + " " + transactionId;
 		Message msg = Message.decode(line);
 		return sendText(msg);
@@ -83,7 +77,7 @@ public class Client
 	public static void main(String[] args) throws IOException {
 		System.out.println("Starting client...");
 
-		client = new Client();
+		// client = new Client();
 
 		// final BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
 		// while (true)
