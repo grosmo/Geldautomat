@@ -25,8 +25,7 @@ public class Message {
         }
     }
 
-    public static Message decode(String message)
-    {
+    public static Message decode(String message){
         if(message.isBlank())
         {
             throw new IllegalArgumentException("Message cannot be empty!");

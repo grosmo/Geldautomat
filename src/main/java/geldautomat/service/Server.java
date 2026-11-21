@@ -3,16 +3,43 @@ package geldautomat.service;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.List;
+
+import geldautomat.data.Kunde;
 
 // public class Server<ClientSocket>
 public class Server {
+    private static final String COMMAND_AUTH = "AUTH";
+    private static final String COMMAND_BALANCE = "BALANCE";
+    private static final String COMMAND_WITHDRAW = "WITHDRAW";
+    private static final String COMMAND_DISPENSE = "DISPENSE";
+    private static final String COMMAND_LOCK = "LOCK";
+    private static final String COMMAND_QUIT = "QUIT";
+    private static final String RESPONSE_OK = "OK";
+    private static final String RESPONSE_ERROR = "ERROR";
+    private static final String STATUS_APPROVED = "APPROVED";
+    private static final String STATUS_COMMITTED = "COMMITTED";
+    private static final String STATUS_CANCELLED = "CANCELLED";
+    private static final String STATUS_FAILED = "FAILED";
+    private static final String STATUS_DISPENSED = "OK";
+
 	private boolean connected;
 	private Socket socket;
 	private BufferedReader reader;
 	private BufferedWriter writer;
 	private ServerSocket serverSocket;
+	private List<Kunde> kunden;
+    private Kunde currentKunde;
 
-	public Server() {
+	public Server() {        		
+		kunden = List.of(
+			new Kunde(111, 1111, 25000),
+			new Kunde(222, 2222, 25000),
+			new Kunde(333, 3333, 25000),
+			new Kunde(444, 4444, 25000),
+			new Kunde(555, 5555, 25000)
+		);
+
 		try {
 			this.serverSocket = new ServerSocket(27999);
 			System.out.println("Warte auf Client...");
@@ -40,67 +67,81 @@ public class Server {
 		}
 	}
 
-	private void handleRequests (
-        final Socket socket, final BufferedReader reader, final BufferedWriter writer) {
-		while (this.connected)
-		{
-            try
-			{
+	private void handleRequests (final Socket socket, final BufferedReader reader, final BufferedWriter writer) {
+		while (this.connected) {
+            try {
 				String line = reader.readLine();
                 Message reply;
 
-                if(line !=null)
-                {
+                if(line !=null) {
                     Message msg = Message.decode(line);
                     String command = msg.getCommand();
-                    switch (command) 
-                    {
-                        case "AUTH":
-                            reply = new Message("OK");
+                    switch (command) {
+                        case COMMAND_AUTH:
+                            int cardNumber = Integer.parseInt(msg.getParam()[0]);
+                            int pin = Integer.parseInt(msg.getParam()[1]);
+                            boolean authenticated = false;
+                            for (Kunde kunde : kunden) {
+                                if (kunde.getCardNumber() == cardNumber && kunde.getPin() == pin) {
+                                    authenticated = true;
+                                    currentKunde = kunde;
+                                    break;
+                                }
+                            }
+                            if (!authenticated) {
+                                reply = new Message(RESPONSE_ERROR);
+                                break;
+                            }
+                            reply = new Message(RESPONSE_OK);
                             break;
     
-                        case "BALANCE":
-                            reply = new Message("OK", "25000");
+                        case COMMAND_BALANCE:
+                            reply = new Message(RESPONSE_OK, currentKunde.getBalance() + "");
                             break;
     
-                        case "WITHDRAW":
-                            reply = new Message("OK", "APPROVED");
+                        case COMMAND_WITHDRAW:
+                            int amount = Integer.parseInt(msg.getParam()[0]);
+                            // was mit transactionId machen?
+                            // String transactionId = msg.getParam()[1];
+                            currentKunde.setBalance(currentKunde.getBalance() - amount);
+                            reply = new Message(RESPONSE_OK, STATUS_APPROVED);
                             break;
-                        case "DISPENSE":
-                            if(msg.getParam()[1].equals("OK"))
-                            {
-                                reply = new Message("OK", "COMMITTED");
-                            }
-                            else if(msg.getParam()[1].equals("FAILED"))
-                            {
-                                reply = new Message("OK", "CANCELLED");
-                            }
+                        case COMMAND_DISPENSE:
+                            if(msg.getParam()[1].equals(STATUS_DISPENSED))
+                                reply = new Message(RESPONSE_OK, STATUS_COMMITTED);
+                            else if(msg.getParam()[1].equals(STATUS_FAILED))
+                                reply = new Message(RESPONSE_OK, STATUS_CANCELLED);
                             else
-                            {
-                                reply = new Message("ERROR");
-                            }
+                                reply = new Message(RESPONSE_ERROR);
                             break;
-                        case "QUIT":
-                            reply = new Message("OK");
+                        case COMMAND_LOCK:
+                            int cardNumberToLock = Integer.parseInt(msg.getParam()[0]);
+                            for (Kunde kunde : kunden) {
+                                if (kunde.getCardNumber() == cardNumberToLock) {
+                                    kunde.setBlocked();
+                                    break;
+                                }
+                            }
+                            reply = new Message(RESPONSE_OK);
+                            break;
+                        case COMMAND_QUIT:
+                            reply = new Message(RESPONSE_OK);
                             break;
                         default:
-                            reply = new Message("ERROR");
+                            reply = new Message(RESPONSE_ERROR);
                             break;
                     }
     
-                writer.write(reply.encode());
-                writer.flush();
-                
-                System.out.printf("Vom Client (%s) empfangen: %s%n", socket.getRemoteSocketAddress(), line);
-                System.out.printf("Sende an Client (%s): %s%n", socket.getRemoteSocketAddress(), reply.encode());
-                }
-                else
-                {
+                    writer.write(reply.encode());
+                    writer.flush();
+                    
+                    System.out.printf("Vom Client (%s) empfangen: %s%n", socket.getRemoteSocketAddress(), line);
+                    System.out.printf("Sende an Client (%s): %s%n", socket.getRemoteSocketAddress(), reply.encode());
+                } else {
                     connected = false;
                 }
             }
-            catch (IOException e)
-            {
+            catch (IOException e) {
                 System.out.println(e.getMessage());
                 return;
             }
