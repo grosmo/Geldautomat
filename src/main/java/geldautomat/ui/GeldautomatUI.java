@@ -1,6 +1,5 @@
 package geldautomat.ui;
 
-import geldautomat.service.Client;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.layout.BorderPane;
@@ -12,7 +11,6 @@ public class GeldautomatUI extends Application {
 	@Override
 	public void start(Stage primaryStage) {
 		try {
-			Client.main(new String[]{});
 			HBox hbox = new HBox(10);
 			hbox.getChildren().addAll();
 			BorderPane border = new BorderPane();
