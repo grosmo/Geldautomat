@@ -5,7 +5,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
 
+import geldautomat.data.StringExpressions;
 import geldautomat.service.Client;
 import javafx.animation.PauseTransition;
 import javafx.application.Application;
@@ -13,7 +15,9 @@ import javafx.application.Platform;
 import javafx.geometry.Pos;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.ColumnConstraints;
@@ -26,28 +30,8 @@ import javafx.stage.Stage;
 import javafx.util.Duration;
 
 public class GeldautomatUI extends Application {
-
-	private static final String LEER = "";
-	private static final String OK = "OK";
-	private static final String CLEAR = "CLEAR";
-	private static final String PROMPT_KARTENNUMMER = "Kartennummer eingeben:";
-	private static final String PROMPT_PIN = "PIN eingeben:";
-	private static final String PROMPT_AUTH_ERFOLGREICH = "Authentifizierung erfolgreich.";
-	private static final String PROMPT_KARTE_GESPERRT = "Zu viele Fehlversuche - Karte ist gesperrt.";
-	private static final String PROMPT_PIN_FALSCH = "Falscher PIN, neu versuchen.";
-	private static final String FENSTER_TITEL = "Geldautomat";
-	private static final String PROMPT_AKTION = "Was wollen Sie tun?";
-	private static final String PROMPT_ABHEBEN = "Betrag eingeben:";
-	
 	private Client client;
 	private final ExecutorService netzwerk = Executors.newSingleThreadExecutor();
-
-	private final String[][] zahlenButtonsStrings = {
-		{"1", "2", "3"},
-		{"4", "5", "6"},
-		{"7", "8", "9"},
-		{"0", OK, CLEAR}
-	};
 
 	String eingabe = "";
 	String response = "";
@@ -67,11 +51,11 @@ public class GeldautomatUI extends Application {
 			try{
 				client = new Client();
 				Platform.runLater(() -> {
-					eingabeAufforderungLabel.setText(PROMPT_KARTENNUMMER);
+					eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTENNUMMER);
 				});
 			} catch (IOException e) {
 				Platform.runLater(() -> {
-					eingabeAufforderungLabel.setText("Fehler beim Verbinden mit dem Server.");
+					eingabeAufforderungLabel.setText(StringExpressions.PROMPT_SERVER_FEHLER);
 				});
 			}
 		});
@@ -93,8 +77,8 @@ public class GeldautomatUI extends Application {
 			eingabeAufforderungLabel.setFont(new Font(18));
 
 			eingabeLabel.setText(eingabe);
-			for (int i = 0; i < zahlenButtonsStrings.length; i++) {
-				String[] row = zahlenButtonsStrings[i];
+			for (int i = 0; i < StringExpressions.zahlenButtonsStrings.length; i++) {
+				String[] row = StringExpressions.zahlenButtonsStrings[i];
 				for (int j = 0; j < row.length; j++) {
 					String label = row[j];
 					Button btn = new Button(label);
@@ -106,31 +90,32 @@ public class GeldautomatUI extends Application {
 
 			zahlenButtons.forEach(btn -> btn.setOnAction(e -> {
 				String text = btn.getText();
-				if (text.equals(CLEAR)) {
-					eingabe = LEER;
-				} else if (text.equals(OK)) {
-					if (eingabeAufforderungLabel.getText().equals(PROMPT_KARTENNUMMER)) {
+				if (text.equals(StringExpressions.CLEAR)) {
+					eingabe = StringExpressions.LEER;
+				} else if (text.equals(StringExpressions.OK)) {
+					if (eingabeAufforderungLabel.getText().equals(StringExpressions.PROMPT_KARTENNUMMER)) {
 						kartennummerTemp = Integer.parseInt(eingabe);
-						eingabeAufforderungLabel.setText(PROMPT_PIN);
-						eingabe = LEER;
-					} else if (eingabeAufforderungLabel.getText().equals(PROMPT_PIN) || eingabeAufforderungLabel.getText().equals(PROMPT_PIN_FALSCH)) {
+						eingabeAufforderungLabel.setText(StringExpressions.PROMPT_PIN);
+						eingabe = StringExpressions.LEER;
+					} else if (eingabeAufforderungLabel.getText().equals(StringExpressions.PROMPT_PIN) 
+						|| eingabeAufforderungLabel.getText().equals(StringExpressions.PROMPT_PIN_FALSCH)) {
 						pinTemp = Integer.parseInt(eingabe);
-						eingabe = LEER;
+						eingabe = StringExpressions.LEER;
 						netzwerk.execute(() -> {
 							response = client.sendAuth(kartennummerTemp, pinTemp);
 							Platform.runLater(() -> {
-								if(response.equals(OK)) {
-									eingabeAufforderungLabel.setText(PROMPT_AUTH_ERFOLGREICH);
+								if(response.equals(StringExpressions.OK)) {
+									eingabeAufforderungLabel.setText(StringExpressions.PROMPT_AUTH_ERFOLGREICH);
 									btnGeldAbheben.setDisable(false);
 									btnKontostandAnzeigen.setDisable(false);
 									PauseTransition timer = new PauseTransition(Duration.seconds(1));
-									timer.setOnFinished(event -> eingabeAufforderungLabel.setText(PROMPT_AKTION));
+									timer.setOnFinished(event -> eingabeAufforderungLabel.setText(StringExpressions.PROMPT_AKTION));
 									timer.play();
 									
 								} else {
 									if(pinCount >= 2) {
-										eingabeAufforderungLabel.setText(PROMPT_KARTE_GESPERRT);
-										eingabeAufforderungLabel.setStyle("-fx-text-fill: red; -fx-font-weight: bold; ");
+										eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTE_GESPERRT);
+										eingabeAufforderungLabel.setStyle(StringExpressions.TEXT_STYLE_ROT);
 										netzwerk.execute(() -> {
 											client.LockCard(kartennummerTemp);
 										});
@@ -138,30 +123,78 @@ public class GeldautomatUI extends Application {
 										kartennummerTemp = 0;
 										PauseTransition timer = new PauseTransition(Duration.seconds(4));
 										timer.setOnFinished(event -> {
-											eingabeAufforderungLabel.setText(PROMPT_KARTENNUMMER);
-											eingabeAufforderungLabel.setStyle("-fx-text-fill: black; -fx-font-weight: normal; ");
+											eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTENNUMMER);
+											eingabeAufforderungLabel.setStyle(StringExpressions.TEXT_STYLE_SCHWARZ);
 										});
 										timer.play();
 									} else{
-										eingabeAufforderungLabel.setText(PROMPT_PIN_FALSCH);
+										eingabeAufforderungLabel.setText(StringExpressions.PROMPT_PIN_FALSCH);
 										pinCount++;
 									}
 								}
 							});
 						});
-					} else if(eingabeAufforderungLabel.getText().equals(PROMPT_ABHEBEN)) {
-						int betrag = Integer.parseInt(eingabe);
-						eingabe = LEER;
-						
+					} else if(eingabeAufforderungLabel.getText().equals(StringExpressions.PROMPT_ABHEBEN)) {
+						int betrag;
+						try {
+							betrag = Integer.parseInt(eingabe);
+							if (betrag <= 0) {
+								throw new NumberFormatException("Betrag muss positiv sein");
+							}
+						} catch (NumberFormatException ex) {
+							eingabeAufforderungLabel.setText(StringExpressions.PROMPT_ABHEBUNG_ABGELEHNT);
+							eingabe = StringExpressions.LEER;
+							eingabeLabel.setText(eingabe);
+							return;
+						}
+						eingabe = StringExpressions.LEER;
+						long transactionId = ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
+						btnGeldAbheben.setDisable(true);
+						btnKontostandAnzeigen.setDisable(true);
+						eingabeAufforderungLabel.setText(StringExpressions.PROMPT_ABHEBUNG_LAEUFT);
+
 						netzwerk.execute(() -> {
-							response = client.withdraw(betrag);
+							String withdrawalResponse = client == null ? null : client.withdraw(betrag, transactionId);
 							Platform.runLater(() -> {
-								String[] responses = response.split(" ");
-								if(responses[0].equals(OK)) {
+								String expectedApproval = StringExpressions.RESPONSE_OK + " "
+									+ StringExpressions.STATUS_APPROVED + " " + transactionId;
+								if(expectedApproval.equals(withdrawalResponse)) {
 									float betragEuro = betrag / 100.0f;
-									eingabeAufforderungLabel.setText(betragEuro + " € befinden sich im CD Laufwerk!");
+
+									ButtonType ja = new ButtonType(StringExpressions.BUTTON_JA);
+									ButtonType nein = new ButtonType(StringExpressions.BUTTON_NEIN);
+									Alert dialog = new Alert(
+										Alert.AlertType.CONFIRMATION,
+										StringExpressions.PROMPT_GELDAUSGABE.replace("?", String.valueOf(betragEuro)),
+										ja, nein);
+									dialog.setHeaderText(null);
+									boolean dispensed = dialog.showAndWait().orElse(nein) == ja;
+									kartennummerTemp = 0;
+									pinTemp = 0;
+									pinCount = 0;
+									netzwerk.execute(() -> {
+										String dispenseResponse = client.dispense(transactionId, dispensed);
+										Platform.runLater(() -> {
+											String expectedStatus = dispensed ? StringExpressions.STATUS_COMMITTED : StringExpressions.STATUS_CANCELLED;
+											String expectedResponse = StringExpressions.RESPONSE_OK + " " + expectedStatus + " " + transactionId;
+											if (!expectedResponse.equals(dispenseResponse)) {
+												eingabeAufforderungLabel.setText(StringExpressions.PROMPT_ABHEBUNG_UNGEKLAERT + " ID: " + transactionId);
+												return;
+											}
+											eingabeAufforderungLabel.setText(dispensed
+												? StringExpressions.PROMPT_ABHEBUNG_ERFOLGREICH
+												: StringExpressions.PROMPT_ABHEBUNG_ABGEBROCHEN);
+											PauseTransition timer = new PauseTransition(Duration.seconds(3));
+											timer.setOnFinished(event -> eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTENNUMMER));
+											timer.play();
+										});
+									});
+								} else if ((StringExpressions.RESPONSE_ERROR + " " + StringExpressions.STATUS_DECLINED).equals(withdrawalResponse)) {
+									eingabeAufforderungLabel.setText(StringExpressions.PROMPT_ABHEBUNG_ABGELEHNT);
+									btnGeldAbheben.setDisable(false);
+									btnKontostandAnzeigen.setDisable(false);
 								} else {
-									eingabeAufforderungLabel.setText("Fehler beim Abheben");
+									eingabeAufforderungLabel.setText(StringExpressions.PROMPT_ABHEBUNG_UNGEKLAERT + " ID: " + transactionId);
 								}
 							});
 						});
@@ -174,19 +207,20 @@ public class GeldautomatUI extends Application {
 
 			eingabeLabel.setFont(new Font(24));
 			eingabeLabel.setTextAlignment(TextAlignment.RIGHT);
-			eingabeLabel.setPrefSize(Double.MAX_VALUE, 75);
+			eingabeLabel.setPrefSize(Double.MAX_VALUE, 60);
 			VBox vbox = new VBox();
-			eingabeAufforderungLabel.setText(PROMPT_KARTENNUMMER);
+			vbox.setPadding(new Insets(15));
+			eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTENNUMMER);
 			vbox.getChildren().addAll(eingabeAufforderungLabel, eingabeLabel);
 			
-			btnGeldAbheben = new Button("Geld abheben");
+			btnGeldAbheben = new Button(StringExpressions.BUTTON_GELDABHEBEN);
 			btnGeldAbheben.setPrefSize(Double.MAX_VALUE, 75);
 			btnGeldAbheben.setDisable(true);
 			btnGeldAbheben.setOnAction(e -> {
-				eingabeAufforderungLabel.setText(PROMPT_ABHEBEN);
+				eingabeAufforderungLabel.setText(StringExpressions.PROMPT_ABHEBEN);
 			});
 			
-			btnKontostandAnzeigen = new Button("Kontostand anzeigen");
+			btnKontostandAnzeigen = new Button(StringExpressions.BUTTON_KONTOSTAND_ANZEIGEN);
 			btnKontostandAnzeigen.setPrefSize(Double.MAX_VALUE, 75);
 			btnKontostandAnzeigen.setDisable(true);
 			btnKontostandAnzeigen.setOnAction(e -> {
@@ -195,15 +229,30 @@ public class GeldautomatUI extends Application {
 					String[] responses = response.split(" ");
 					float kontostandEuro = Integer.parseInt(responses[1]) / 100.0f;
 					Platform.runLater(() -> {
-						eingabeAufforderungLabel.setText("Kontostand: " + kontostandEuro + " €");
+						eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KONTOSTAND.replace("?", String.valueOf(kontostandEuro)));
 					});
 				});
 			});
 
+			Button btnKarteAuswerfen = new Button(StringExpressions.BUTTON_KARTE_AUSWERFEN);
+			btnKarteAuswerfen.setPrefSize(Double.MAX_VALUE, 75);
+			btnKarteAuswerfen.setOnAction(e -> {
+				kartennummerTemp = 0;
+				pinTemp = 0;
+				pinCount = 0;
+				eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTE_AUSGEWORFEN);
+				PauseTransition timer = new PauseTransition(Duration.seconds(2));
+				timer.setOnFinished(event -> {
+					eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTENNUMMER);
+				});
+				timer.play();
+			});
+
+
 			VBox vboxAktionenButtons = new VBox();
 			vboxAktionenButtons.setPadding(new Insets(10));
 			vboxAktionenButtons.setAlignment(Pos.CENTER);
-			vboxAktionenButtons.setStyle("-fx-spacing: 10;");
+			vboxAktionenButtons.setStyle(StringExpressions.STYLE_SPACING);
 			vboxAktionenButtons.getChildren().addAll(btnGeldAbheben, btnKontostandAnzeigen);
 
 			GridPane contentGrid = new GridPane();
@@ -227,7 +276,7 @@ public class GeldautomatUI extends Application {
 			border.setCenter(contentGrid);
 
 			Scene scene = new Scene(border);
-			primaryStage.setTitle(FENSTER_TITEL);
+			primaryStage.setTitle(StringExpressions.FENSTER_TITEL);
 			primaryStage.setScene(scene);
 			primaryStage.setWidth(0.5 * 1280);
 			primaryStage.setHeight(0.5 * 720);

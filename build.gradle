@@ -26,6 +26,11 @@ javafx {
 }
 
 dependencies {
+    implementation 'org.xerial:sqlite-jdbc:3.45.3.0'
+    runtimeOnly 'org.slf4j:slf4j-nop:1.7.36'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
     // Zusaetzlich benuetigte Abhaengigkeiten für GraalPy Python Support
     implementation 'org.graalvm.polyglot:polyglot:25.0.3'
     
@@ -41,4 +46,7 @@ repositories {
     mavenCentral()
 }
 
+test {
+    useJUnitPlatform()
+}
 

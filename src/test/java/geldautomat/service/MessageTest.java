@@ -1,8 +1,6 @@
-package Project.message.tests;
+package geldautomat.service;
 
 import org.junit.jupiter.api.Test;
-
-import Project.message.src.Message;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -12,21 +10,21 @@ class MessageTest {
     void testEncodeWithoutParameters() {
         Message message = new Message("BALANCE");
 
-        assertEquals("BALANCE", message.encode());
+        assertEquals("BALANCE\r\n", message.encode());
     }
 
     @Test
     void testEncodeWithOneParameter() {
         Message message = new Message("WITHDRAW", "5000");
 
-        assertEquals("WITHDRAW 5000", message.encode());
+        assertEquals("WITHDRAW 5000\r\n", message.encode());
     }
 
     @Test
     void testEncodeWithMultipleParameters() {
         Message message = new Message("AUTH", "Karte123", "PIN_BLOCK_ABC");
 
-        assertEquals("AUTH Karte123 PIN_BLOCK_ABC", message.encode());
+        assertEquals("AUTH Karte123 PIN_BLOCK_ABC\r\n", message.encode());
     }
 
     @Test
@@ -35,7 +33,7 @@ class MessageTest {
 
         Message result = decoder.decode("BALANCE");
 
-        assertEquals("BALANCE", result.encode());
+        assertEquals("BALANCE\r\n", result.encode());
     }
 
     @Test
@@ -44,7 +42,7 @@ class MessageTest {
 
         Message result = decoder.decode("WITHDRAW 5000 T17");
 
-        assertEquals("WITHDRAW 5000 T17", result.encode());
+        assertEquals("WITHDRAW 5000 T17\r\n", result.encode());
     }
 
     @Test
@@ -53,7 +51,7 @@ class MessageTest {
 
         Message result = decoder.decode("WITHDRAW   5000    T17");
 
-        assertEquals("WITHDRAW 5000 T17", result.encode());
+        assertEquals("WITHDRAW 5000 T17\r\n", result.encode());
     }
 
     @Test

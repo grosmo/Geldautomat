@@ -3,17 +3,16 @@ package geldautomat.service;
 import java.io.*;
 import java.net.Socket;
 
-public class Client
-{
+import geldautomat.data.StringExpressions;
 
-	// public static Client client;
-
+public class Client {
 	private Socket socket;
 	private BufferedWriter writer;
 	private BufferedReader reader;
+	private static final int SERVER_PORT = 27999;
 
 	public Client()	throws IOException {
-		socket = new Socket("localhost", 27999);
+		socket = new Socket("localhost", SERVER_PORT);
 		System.out.println("Client connected end with \"END\"");
 
 		writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
@@ -44,53 +43,34 @@ public class Client
 		}
 	}
 
-	// AUTH Karte123 1234 		OK oder ERROR 		Prüft Kartennummer und PIN anhand der Datenbank.
-	// BALANCE 					OK 25000 			Liefert den Kontostand; Beispielwert 25000 Cent.
-	// WITHDRAW 5000 T17 		OK APPROVED 		Abhebung von 5000 Cent mit Transaktionskennung T17.
-
 	public String sendAuth(final int cardNumber, final int pin) {
-		String line = "AUTH " + cardNumber + " " + pin;
+		String line = StringExpressions.COMMAND_AUTH + " " + cardNumber + " " + pin;
 		Message msg = Message.decode(line);
 		return sendText(msg);
 	}
 
 	public String getBalance() {
-		String line = "BALANCE";
+		String line = StringExpressions.COMMAND_BALANCE;
 		Message msg = Message.decode(line);
 		return sendText(msg);
 	}
 
-	public String withdraw(final int amount) {
-		String transactionId = "T" + System.currentTimeMillis();
-		String line = "WITHDRAW " + amount + " " + transactionId;
+	public String withdraw(final int amount, final long transactionId) {
+		String line = StringExpressions.COMMAND_WITHDRAW + " " + amount + " " + transactionId;
+		Message msg = Message.decode(line);
+		return sendText(msg);
+	}
+
+	public String dispense(final long transactionId, final boolean dispensed) {
+		String status = dispensed ? StringExpressions.RESPONSE_OK : StringExpressions.STATUS_FAILED;
+		String line = StringExpressions.COMMAND_DISPENSE + " " + transactionId + " " + status;
 		Message msg = Message.decode(line);
 		return sendText(msg);
 	}
 
 	public void LockCard(final int cardNumber) {
-		String line = "LOCK " + cardNumber;
+		String line = StringExpressions.COMMAND_LOCK + " " + cardNumber;
 		Message msg = Message.decode(line);
 		sendText(msg);
-	}
-
-
-	public static void main(String[] args) throws IOException {
-		System.out.println("Starting client...");
-
-		// client = new Client();
-
-		// final BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-		// while (true)
-		// {
-		// 	final String line = reader.readLine();
-		// 	if (line.equals("END")) {
-		// 		break;
-		// 	}
-
-		// 	Message msg = Message.decode(line);
-		// 	client.sendText(msg);
-		// }
-
-		// client.close();
 	}
 }
