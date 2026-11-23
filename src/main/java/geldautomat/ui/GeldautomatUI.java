@@ -7,8 +7,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 
-import geldautomat.data.StringExpressions;
 import geldautomat.service.Client;
+import geldautomat.service.StringExpressions;
 import javafx.animation.PauseTransition;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -25,42 +25,67 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.RowConstraints;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.scene.text.TextAlignment;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
 public class GeldautomatUI extends Application {
+
+	private enum Zustand {
+		KARTENNUMMER,
+		PIN,
+		AKTION,
+		KONTOSTAND,
+		ABHEBEN
+	}
+
 	private Client client;
 	private final ExecutorService netzwerk = Executors.newSingleThreadExecutor();
 
-	String eingabe = "";
-	String response = "";
-	Label eingabeAufforderungLabel = new Label();
-	Label eingabeLabel = new Label(eingabe);
-	int kartennummerTemp = 0;
-	int pinTemp = 0;
+	Zustand zustand = Zustand.KARTENNUMMER;
+	
+	// global weil effectivly final in lambdas
+	String eingabe = UIStringExpressions.LEER;
+	String response = UIStringExpressions.LEER;
+	int currentKartenNummer = 0;
 	int pinCount = 0;
+
+	GridPane contentGrid;
+
+	Label eingabeAufforderungLabel;
+	Label eingabeLabel;
 
 	Button btnGeldAbheben;
 	Button btnKontostandAnzeigen;
-	List<Button> actionButtons = new ArrayList<>();
-
+	Button btnKarteAuswerfen;
+	
 	@Override
 	public void start(Stage primaryStage) {
+
+		eingabeAufforderungLabel = new Label();
+		// eingabeAufforderungLabel.setFont(new Font("Consola", 18, FontWeight.BOLD));
+		eingabeAufforderungLabel.setStyle(
+			"-fx-font-family: Consolas;" +
+			"-fx-font-size: 18"
+		);
+
 		netzwerk.execute(() -> {
 			try{
 				client = new Client();
 				Platform.runLater(() -> {
-					eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTENNUMMER);
+					eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_KARTENNUMMER);
 				});
 			} catch (IOException e) {
 				Platform.runLater(() -> {
-					eingabeAufforderungLabel.setText(StringExpressions.PROMPT_SERVER_FEHLER);
+					eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_SERVER_FEHLER);
 				});
 			}
 		});
 		try {
 			GridPane zahlenGrid = new GridPane();
+			zahlenGrid.setPrefSize(Double.MAX_VALUE, Double.MAX_VALUE);
+			
 			ColumnConstraints clmn = new ColumnConstraints();
 			clmn.setPercentWidth(100 / 3);
 			clmn.setFillWidth(true);
@@ -71,196 +96,153 @@ public class GeldautomatUI extends Application {
 			rw.setFillHeight(true);
 			zahlenGrid.getRowConstraints().addAll(rw, rw, rw, rw);
 
-			zahlenGrid.setPrefSize(Double.MAX_VALUE, Double.MAX_VALUE);
 			List<Button> zahlenButtons = new ArrayList<>();
 
-			eingabeAufforderungLabel.setFont(new Font(18));
-
-			eingabeLabel.setText(eingabe);
-			for (int i = 0; i < StringExpressions.zahlenButtonsStrings.length; i++) {
-				String[] row = StringExpressions.zahlenButtonsStrings[i];
-				for (int j = 0; j < row.length; j++) {
-					String label = row[j];
-					Button btn = new Button(label);
-					btn.setPrefSize(Double.MAX_VALUE, Double.MAX_VALUE);
-					zahlenGrid.add(btn, j, i);
-					zahlenButtons.add(btn);
-				}
-			}
-
-			zahlenButtons.forEach(btn -> btn.setOnAction(e -> {
-				String text = btn.getText();
-				if (text.equals(StringExpressions.CLEAR)) {
-					eingabe = StringExpressions.LEER;
-				} else if (text.equals(StringExpressions.OK)) {
-					if (eingabeAufforderungLabel.getText().equals(StringExpressions.PROMPT_KARTENNUMMER)) {
-						kartennummerTemp = Integer.parseInt(eingabe);
-						eingabeAufforderungLabel.setText(StringExpressions.PROMPT_PIN);
-						eingabe = StringExpressions.LEER;
-					} else if (eingabeAufforderungLabel.getText().equals(StringExpressions.PROMPT_PIN) 
-						|| eingabeAufforderungLabel.getText().equals(StringExpressions.PROMPT_PIN_FALSCH)) {
-						pinTemp = Integer.parseInt(eingabe);
-						eingabe = StringExpressions.LEER;
-						netzwerk.execute(() -> {
-							response = client.sendAuth(kartennummerTemp, pinTemp);
-							Platform.runLater(() -> {
-								if(response.equals(StringExpressions.OK)) {
-									eingabeAufforderungLabel.setText(StringExpressions.PROMPT_AUTH_ERFOLGREICH);
-									btnGeldAbheben.setDisable(false);
-									btnKontostandAnzeigen.setDisable(false);
-									PauseTransition timer = new PauseTransition(Duration.seconds(1));
-									timer.setOnFinished(event -> eingabeAufforderungLabel.setText(StringExpressions.PROMPT_AKTION));
-									timer.play();
-									
-								} else {
-									if(pinCount >= 2) {
-										eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTE_GESPERRT);
-										eingabeAufforderungLabel.setStyle(StringExpressions.TEXT_STYLE_ROT);
-										netzwerk.execute(() -> {
-											client.LockCard(kartennummerTemp);
-										});
-										pinCount = 0;
-										kartennummerTemp = 0;
-										PauseTransition timer = new PauseTransition(Duration.seconds(4));
-										timer.setOnFinished(event -> {
-											eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTENNUMMER);
-											eingabeAufforderungLabel.setStyle(StringExpressions.TEXT_STYLE_SCHWARZ);
-										});
-										timer.play();
-									} else{
-										eingabeAufforderungLabel.setText(StringExpressions.PROMPT_PIN_FALSCH);
-										pinCount++;
-									}
-								}
-							});
-						});
-					} else if(eingabeAufforderungLabel.getText().equals(StringExpressions.PROMPT_ABHEBEN)) {
-						int betrag;
-						try {
-							betrag = Integer.parseInt(eingabe);
-							if (betrag <= 0) {
-								throw new NumberFormatException("Betrag muss positiv sein");
-							}
-						} catch (NumberFormatException ex) {
-							eingabeAufforderungLabel.setText(StringExpressions.PROMPT_ABHEBUNG_ABGELEHNT);
-							eingabe = StringExpressions.LEER;
-							eingabeLabel.setText(eingabe);
-							return;
-						}
-						eingabe = StringExpressions.LEER;
-						long transactionId = ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
-						btnGeldAbheben.setDisable(true);
-						btnKontostandAnzeigen.setDisable(true);
-						eingabeAufforderungLabel.setText(StringExpressions.PROMPT_ABHEBUNG_LAEUFT);
-
-						netzwerk.execute(() -> {
-							String withdrawalResponse = client == null ? null : client.withdraw(betrag, transactionId);
-							Platform.runLater(() -> {
-								String expectedApproval = StringExpressions.RESPONSE_OK + " "
-									+ StringExpressions.STATUS_APPROVED + " " + transactionId;
-								if(expectedApproval.equals(withdrawalResponse)) {
-									float betragEuro = betrag / 100.0f;
-
-									ButtonType ja = new ButtonType(StringExpressions.BUTTON_JA);
-									ButtonType nein = new ButtonType(StringExpressions.BUTTON_NEIN);
-									Alert dialog = new Alert(
-										Alert.AlertType.CONFIRMATION,
-										StringExpressions.PROMPT_GELDAUSGABE.replace("?", String.valueOf(betragEuro)),
-										ja, nein);
-									dialog.setHeaderText(null);
-									boolean dispensed = dialog.showAndWait().orElse(nein) == ja;
-									kartennummerTemp = 0;
-									pinTemp = 0;
-									pinCount = 0;
-									netzwerk.execute(() -> {
-										String dispenseResponse = client.dispense(transactionId, dispensed);
-										Platform.runLater(() -> {
-											String expectedStatus = dispensed ? StringExpressions.STATUS_COMMITTED : StringExpressions.STATUS_CANCELLED;
-											String expectedResponse = StringExpressions.RESPONSE_OK + " " + expectedStatus + " " + transactionId;
-											if (!expectedResponse.equals(dispenseResponse)) {
-												eingabeAufforderungLabel.setText(StringExpressions.PROMPT_ABHEBUNG_UNGEKLAERT + " ID: " + transactionId);
-												return;
-											}
-											eingabeAufforderungLabel.setText(dispensed
-												? StringExpressions.PROMPT_ABHEBUNG_ERFOLGREICH
-												: StringExpressions.PROMPT_ABHEBUNG_ABGEBROCHEN);
-											PauseTransition timer = new PauseTransition(Duration.seconds(3));
-											timer.setOnFinished(event -> eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTENNUMMER));
-											timer.play();
-										});
-									});
-								} else if ((StringExpressions.RESPONSE_ERROR + " " + StringExpressions.STATUS_DECLINED).equals(withdrawalResponse)) {
-									eingabeAufforderungLabel.setText(StringExpressions.PROMPT_ABHEBUNG_ABGELEHNT);
-									btnGeldAbheben.setDisable(false);
-									btnKontostandAnzeigen.setDisable(false);
-								} else {
-									eingabeAufforderungLabel.setText(StringExpressions.PROMPT_ABHEBUNG_UNGEKLAERT + " ID: " + transactionId);
-								}
-							});
-						});
-					}
-				} else {
-					eingabe += text;
-				}
-				eingabeLabel.setText(eingabe);
-			}));
-
-			eingabeLabel.setFont(new Font(24));
-			eingabeLabel.setTextAlignment(TextAlignment.RIGHT);
+			eingabeLabel = new Label(eingabe);
+			eingabeLabel.setStyle(
+				"-fx-font-family: Consolas;" +
+				"-fx-font-size: 34px;" +
+				"-fx-font-weight: bold;" +
+				"-fx-alignment: center;"
+			);
 			eingabeLabel.setPrefSize(Double.MAX_VALUE, 60);
-			VBox vbox = new VBox();
-			vbox.setPadding(new Insets(15));
-			eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTENNUMMER);
-			vbox.getChildren().addAll(eingabeAufforderungLabel, eingabeLabel);
-			
-			btnGeldAbheben = new Button(StringExpressions.BUTTON_GELDABHEBEN);
+
+			btnGeldAbheben = new Button(UIStringExpressions.BUTTON_GELDABHEBEN);
 			btnGeldAbheben.setPrefSize(Double.MAX_VALUE, 75);
 			btnGeldAbheben.setDisable(true);
+			btnGeldAbheben.setStyle(
+						"-fx-font-size: 18px;"
+					);
 			btnGeldAbheben.setOnAction(e -> {
-				eingabeAufforderungLabel.setText(StringExpressions.PROMPT_ABHEBEN);
+				eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_ABHEBEN);
+				zustand = Zustand.ABHEBEN;
 			});
 			
-			btnKontostandAnzeigen = new Button(StringExpressions.BUTTON_KONTOSTAND_ANZEIGEN);
+			btnKontostandAnzeigen = new Button(UIStringExpressions.BUTTON_KONTOSTAND_ANZEIGEN);
 			btnKontostandAnzeigen.setPrefSize(Double.MAX_VALUE, 75);
 			btnKontostandAnzeigen.setDisable(true);
+			btnKontostandAnzeigen.setStyle(
+						"-fx-font-size: 18px;"
+					);
 			btnKontostandAnzeigen.setOnAction(e -> {
 				netzwerk.execute(() -> {
 					response = client.getBalance();
 					String[] responses = response.split(" ");
 					float kontostandEuro = Integer.parseInt(responses[1]) / 100.0f;
 					Platform.runLater(() -> {
-						eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KONTOSTAND.replace("?", String.valueOf(kontostandEuro)));
+						eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_KONTOSTAND.replace("?", String.valueOf(kontostandEuro)));
 					});
 				});
 			});
 
-			Button btnKarteAuswerfen = new Button(StringExpressions.BUTTON_KARTE_AUSWERFEN);
+			btnKarteAuswerfen = new Button(UIStringExpressions.BUTTON_KARTE_AUSWERFEN);
 			btnKarteAuswerfen.setPrefSize(Double.MAX_VALUE, 75);
+			btnKarteAuswerfen.setDisable(true);
+			btnKarteAuswerfen.setStyle(
+						"-fx-font-size: 18px;"
+					);
 			btnKarteAuswerfen.setOnAction(e -> {
-				kartennummerTemp = 0;
-				pinTemp = 0;
+				netzwerk.execute(() -> {
+					client.quit();
+				});
+				
+				currentKartenNummer = 0;
 				pinCount = 0;
-				eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTE_AUSGEWORFEN);
+				btnGeldAbheben.setDisable(true);
+				btnKontostandAnzeigen.setDisable(true);
+				btnKarteAuswerfen.setDisable(true);
+				eingabeLabel.setText(UIStringExpressions.LEER);
+				eingabe = UIStringExpressions.LEER;
+				zustand = Zustand.KARTENNUMMER;
+
+				eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_KARTE_AUSGEWORFEN);
 				PauseTransition timer = new PauseTransition(Duration.seconds(2));
+				contentGrid.setDisable(true);
 				timer.setOnFinished(event -> {
-					eingabeAufforderungLabel.setText(StringExpressions.PROMPT_KARTENNUMMER);
+					eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_KARTENNUMMER);
+					contentGrid.setDisable(false);
 				});
 				timer.play();
 			});
 
+			for (int i = 0; i < UIStringExpressions.zahlenButtonsStrings.length; i++) {
+				String[] row = UIStringExpressions.zahlenButtonsStrings[i];
+				for (int j = 0; j < row.length; j++) {
+					Button btn = new Button(row[j]);
+					btn.setPrefSize(Double.MAX_VALUE, Double.MAX_VALUE);
+					btn.setStyle(
+						"-fx-font-size: 20px;" +
+						"-fx-font-weight: bold;"
+					);
+					zahlenGrid.add(btn, j, i);
+					zahlenButtons.add(btn);
+				}
+			}
+
+			zahlenButtons.forEach(btn -> btn.setOnAction(e -> {
+				if(zustand == Zustand.AKTION)
+					return;
+				String text = btn.getText();
+				if (text.equals(UIStringExpressions.CLEAR)) {
+					eingabe = UIStringExpressions.LEER;
+					eingabeLabel.setText(UIStringExpressions.LEER);
+				} else if (text.equals(UIStringExpressions.OK)) {
+					return;
+				} else {
+					int maxLaenge = switch(zustand){
+						case KARTENNUMMER -> 3;
+						case PIN -> 4;
+						case ABHEBEN -> 6;
+						default -> Integer.MAX_VALUE;
+					};
+					if (eingabe.length() < maxLaenge) {
+						eingabe += text;
+					}
+				}
+				if(zustand == Zustand.PIN)
+					eingabeLabel.setText("*".repeat(eingabe.length()));
+				else
+					eingabeLabel.setText(eingabe);
+			}));
+
+			Button okButtonTemp = zahlenButtons.stream()
+				.filter(button -> UIStringExpressions.OK.equals(button.getText()))
+				.findFirst()
+				.orElse(null);
+
+			if (okButtonTemp != null) {
+				okButtonTemp.setOnAction(e -> {
+					if (zustand.equals(Zustand.KARTENNUMMER)) {
+						currentKartenNummer = Integer.parseInt(eingabe);
+						eingabeLabel.setText(UIStringExpressions.LEER);
+						eingabe = UIStringExpressions.LEER;
+						eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_PIN);
+						zustand = Zustand.PIN;
+					} else if (zustand.equals(Zustand.PIN)) {
+						onPinEingabe();
+					} else if(zustand.equals(Zustand.ABHEBEN)) {
+						onAbheben();
+					}
+				});
+			}
+
+			VBox vbox = new VBox();
+			vbox.setPadding(new Insets(15));
+			eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_KARTENNUMMER);
+			vbox.getChildren().addAll(eingabeAufforderungLabel, eingabeLabel);
 
 			VBox vboxAktionenButtons = new VBox();
 			vboxAktionenButtons.setPadding(new Insets(10));
 			vboxAktionenButtons.setAlignment(Pos.CENTER);
-			vboxAktionenButtons.setStyle(StringExpressions.STYLE_SPACING);
-			vboxAktionenButtons.getChildren().addAll(btnGeldAbheben, btnKontostandAnzeigen);
+			vboxAktionenButtons.setStyle(UIStringExpressions.STYLE_SPACING);
+			vboxAktionenButtons.getChildren().addAll(btnGeldAbheben, btnKontostandAnzeigen, btnKarteAuswerfen);
 
-			GridPane contentGrid = new GridPane();
+			contentGrid = new GridPane();
 
 			ColumnConstraints col1 = new ColumnConstraints();
-			col1.setPercentWidth(30);
+			col1.setPercentWidth(40);
 			ColumnConstraints col2 = new ColumnConstraints();
-			col2.setPercentWidth(70);
+			col2.setPercentWidth(60);
 			contentGrid.getColumnConstraints().addAll(col1, col2);
 			
 			RowConstraints row1 = new RowConstraints();
@@ -276,7 +258,7 @@ public class GeldautomatUI extends Application {
 			border.setCenter(contentGrid);
 
 			Scene scene = new Scene(border);
-			primaryStage.setTitle(StringExpressions.FENSTER_TITEL);
+			primaryStage.setTitle(UIStringExpressions.FENSTER_TITEL);
 			primaryStage.setScene(scene);
 			primaryStage.setWidth(0.5 * 1280);
 			primaryStage.setHeight(0.5 * 720);
@@ -285,5 +267,127 @@ public class GeldautomatUI extends Application {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+	}
+
+	private void onPinEingabe() {
+		contentGrid.setDisable(true);
+		int pinTemp = Integer.parseInt(eingabe);
+		eingabeLabel.setText(UIStringExpressions.LEER);
+		eingabe = UIStringExpressions.LEER;
+		netzwerk.execute(() -> {
+			response = client.sendAuth(currentKartenNummer, pinTemp);
+			Platform.runLater(() -> {
+				if(response.equals(StringExpressions.RESPONSE_OK)) {
+					eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_AUTH_ERFOLGREICH);
+					
+					btnGeldAbheben.setDisable(false);	
+					btnKontostandAnzeigen.setDisable(false);
+					btnKarteAuswerfen.setDisable(false);
+					
+					contentGrid.setDisable(true);
+					PauseTransition timer = new PauseTransition(Duration.seconds(2));
+					timer.setOnFinished(event -> {
+						eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_AKTION);
+						zustand = Zustand.AKTION;
+						contentGrid.setDisable(false);
+					});
+					timer.play();
+					
+				} else if(response.equals(StringExpressions.RESPONSE_BLOCKED)) {
+					client.quit();
+					
+					zustand = Zustand.KARTENNUMMER;
+					eingabeLabel.setText(UIStringExpressions.LEER);
+					eingabe = UIStringExpressions.LEER;
+					eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_KARTENNUMMER);
+
+					Alert alert = new Alert(Alert.AlertType.ERROR);
+					alert.setTitle("Fehler");
+					alert.setHeaderText(null);
+					alert.setContentText("Die Karte ist gesperrt!");
+					alert.showAndWait();
+
+				} else {
+					if(pinCount >= 2) {
+						eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_KARTE_GESPERRT);
+						eingabeAufforderungLabel.setStyle(UIStringExpressions.TEXT_STYLE_ROT);
+						pinCount = 0;
+						currentKartenNummer = 0;
+						client.quit();
+						eingabeLabel.setText(UIStringExpressions.LEER);
+						eingabe = UIStringExpressions.LEER;
+						zustand = Zustand.KARTENNUMMER;
+						contentGrid.setDisable(true);
+						PauseTransition timer = new PauseTransition(Duration.seconds(2));
+						timer.setOnFinished(event -> {
+							eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_KARTENNUMMER);
+							eingabeAufforderungLabel.setStyle(UIStringExpressions.TEXT_STYLE_SCHWARZ);
+							contentGrid.setDisable(false);
+						});
+						timer.play();
+					} else{
+						eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_PIN_FALSCH);
+						pinCount++;
+					}
+				}
+			});
+		});
+		contentGrid.setDisable(false);
+	}
+
+	private void onAbheben() {
+		// cent in euro
+		int betrag = Integer.parseInt(eingabe) * 100;
+		long transactionId = ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
+		eingabe = UIStringExpressions.LEER;
+		eingabeLabel.setText(UIStringExpressions.LEER);
+		contentGrid.setDisable(true);
+
+		netzwerk.execute(() -> {
+			String withdrawalResponse = client.withdraw(betrag, transactionId);
+			Platform.runLater(() -> {
+				String expectedApproval = StringExpressions.RESPONSE_OK + " "
+					+ StringExpressions.STATUS_APPROVED + " " + transactionId;
+				if(expectedApproval.equals(withdrawalResponse)) {
+					// euro in cent umrechnen
+					int betragEuro = betrag / 100;
+					ButtonType ja = new ButtonType(UIStringExpressions.BUTTON_JA);
+					ButtonType nein = new ButtonType(UIStringExpressions.BUTTON_NEIN);
+					Alert dialog = new Alert(
+						Alert.AlertType.CONFIRMATION,
+						UIStringExpressions.PROMPT_GELDAUSGABE.replace("?", String.valueOf(betragEuro)) + "?",
+						ja, nein);
+					dialog.setHeaderText(null);
+					boolean dispensed = dialog.showAndWait().orElse(nein) == ja;
+
+					zustand = Zustand.AKTION;
+					netzwerk.execute(() -> {
+						String dispenseResponse = client.dispense(transactionId, dispensed);
+						Platform.runLater(() -> {
+							String expectedStatus = dispensed ? StringExpressions.STATUS_COMMITTED : StringExpressions.STATUS_CANCELLED;
+							String expectedResponse = StringExpressions.RESPONSE_OK + " " + expectedStatus + " " + transactionId;
+							if (!expectedResponse.equals(dispenseResponse)) {
+								eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_ABHEBUNG_UNGEKLAERT);
+								client.quit();
+								return;
+							}
+							eingabeAufforderungLabel.setText(dispensed
+								? UIStringExpressions.PROMPT_ABHEBUNG_ERFOLGREICH
+								: UIStringExpressions.PROMPT_ABHEBUNG_ABGEBROCHEN);
+							PauseTransition timer = new PauseTransition(Duration.seconds(2));
+							timer.setOnFinished(event -> {
+								eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_AKTION);
+								contentGrid.setDisable(false);
+							});
+							timer.play();
+						});
+					});
+				} else if ((StringExpressions.RESPONSE_ERROR + " " + StringExpressions.STATUS_DECLINED).equals(withdrawalResponse)) {
+					eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_ABHEBUNG_ABGELEHNT);
+				} else {
+					eingabeAufforderungLabel.setText(UIStringExpressions.PROMPT_ABHEBUNG_UNGEKLAERT);
+				}
+			});
+		});
 	}
 }

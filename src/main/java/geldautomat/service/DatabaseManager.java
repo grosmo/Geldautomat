@@ -10,7 +10,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 
-import geldautomat.data.StringExpressions;
+import geldautomat.data.SQLStatements;
 
 public class DatabaseManager {
     private static Connection connection = null;
@@ -28,38 +28,32 @@ public class DatabaseManager {
     }
 
     public static ResultSet selectAllFromKunden() throws SQLException {
-        PreparedStatement statement = connection.prepareStatement(StringExpressions.SQL_SELECT_ALL_FROM_KUNDEN);
+        PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_SELECT_ALL_FROM_KUNDEN);
         return statement.executeQuery();
     }
 
     public static ResultSet selectKunde(int cardNumber) throws SQLException {
-        PreparedStatement statement = connection.prepareStatement(StringExpressions.SQL_SELECT_KUNDE_BY_CARD_NUMBER);
+        PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_SELECT_KUNDE_BY_CARD_NUMBER);
         statement.setInt(1, cardNumber);
         return statement.executeQuery();
     }
 
     public static ResultSet selectBalanceByCardNumber(int cardNumber) throws SQLException {
-        PreparedStatement statement = connection.prepareStatement(StringExpressions.SQL_SELECT_BALANCE_BY_CARD_NUMBER);
+        PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_SELECT_BALANCE_BY_CARD_NUMBER);
         statement.setInt(1, cardNumber);
         return statement.executeQuery();
     }
 
     public static void lockKundeByCardNumber(int cardNumber) throws SQLException {
-        PreparedStatement statement = connection.prepareStatement(StringExpressions.SQL_LOCK_KUNDE_BY_CARD_NUMBER);
+        System.out.println("nummer " + cardNumber);
+        PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_LOCK_KUNDE_BY_CARD_NUMBER);
         statement.setInt(1, cardNumber);
-        statement.executeUpdate();
-    }
-
-    public static void updateBalanceByCardNumber(int cardNumber, int newBalance) throws SQLException {
-        PreparedStatement statement = connection.prepareStatement(StringExpressions.SQL_UPDATE_BALANCE_BY_CARD_NUMBER);
-        statement.setInt(1, newBalance);
-        statement.setInt(2, cardNumber);
         statement.executeUpdate();
     }
 
     public static void insertTransaktion(int transactionId, int cardNumber, int amount, String status) throws SQLException {
         PreparedStatement statement = connection.prepareStatement(
-            StringExpressions.SQL_INSERT_TRANSFAKTION
+            SQLStatements.SQL_INSERT_TRANSFAKTION
         );
         statement.setInt(1, transactionId);
         statement.setInt(2, cardNumber);
@@ -69,7 +63,7 @@ public class DatabaseManager {
     }
 
     static boolean approveWithdrawal(Connection connection, long id, int cardNumber, int amount) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(StringExpressions.SQL_APPROVE_WITHDRAWAL)) {
+        try (PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_APPROVE_WITHDRAWAL)) {
             statement.setLong(1, id);
             statement.setInt(2, amount);
             statement.setString(3, StringExpressions.STATUS_APPROVED);
@@ -77,19 +71,20 @@ public class DatabaseManager {
             statement.setInt(5, amount);
             statement.setInt(6, cardNumber);
             statement.setString(7, StringExpressions.STATUS_APPROVED);
+            // wenn kunde gesperrt oder nicht genug Guthaben -> 0 ansonsten -> 1 zeilen
             return statement.executeUpdate() == 1;
         }
     }
 
     static boolean finishWithdrawal(Connection connection, long id, int cardNumber, boolean dispensed) throws SQLException {
         if (!connection.getAutoCommit()) {
-            throw new SQLException("Eine andere Datenbanktransaktion ist bereits aktiv.");
+            throw new SQLException(StringExpressions.DB_TRANSACTION_ACTIVE);
         }
         connection.setAutoCommit(false);
         boolean transactionResolved = false;
         try {
             int amount;
-            try (PreparedStatement statement = connection.prepareStatement(StringExpressions.SQL_SELECT_PENDING_WITHDRAWAL)) {
+            try (PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_SELECT_PENDING_WITHDRAWAL)) {
                 statement.setLong(1, id);
                 statement.setInt(2, cardNumber);
                 statement.setString(3, StringExpressions.STATUS_APPROVED);
@@ -99,11 +94,11 @@ public class DatabaseManager {
                         transactionResolved = true;
                         return false;
                     }
-                    amount = result.getInt("amount");
+                    amount = result.getInt(StringExpressions.DB_TRANSACTION_FIELD_AMOUNT);
                 }
             }
             if (dispensed) {
-                try (PreparedStatement statement = connection.prepareStatement(StringExpressions.SQL_DEBIT_WITHDRAWAL)) {
+                try (PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_DEBIT_WITHDRAWAL)) {
                     statement.setInt(1, amount);
                     statement.setInt(2, cardNumber);
                     statement.setInt(3, amount);
@@ -114,7 +109,7 @@ public class DatabaseManager {
                     }
                 }
             }
-            try (PreparedStatement statement = connection.prepareStatement(StringExpressions.SQL_FINISH_WITHDRAWAL)) {
+            try (PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_FINISH_WITHDRAWAL)) {
                 statement.setString(1, dispensed ? StringExpressions.STATUS_COMMITTED : StringExpressions.STATUS_CANCELLED);
                 statement.setLong(2, id);
                 statement.setInt(3, cardNumber);

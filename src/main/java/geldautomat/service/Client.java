@@ -3,8 +3,6 @@ package geldautomat.service;
 import java.io.*;
 import java.net.Socket;
 
-import geldautomat.data.StringExpressions;
-
 public class Client {
 	private Socket socket;
 	private BufferedWriter writer;
@@ -25,7 +23,7 @@ public class Client {
 			writer.write(msg.encode());
 			writer.flush();
 			final String line = reader.readLine();
-			// System.out.println("Vom Server empfangen: " + line);
+			System.out.println("Vom Server empfangen: " + line);
 			return line;
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -72,5 +70,11 @@ public class Client {
 		String line = StringExpressions.COMMAND_LOCK + " " + cardNumber;
 		Message msg = Message.decode(line);
 		sendText(msg);
+	}
+
+	public String quit() {
+		String line = StringExpressions.COMMAND_QUIT;
+		Message msg = Message.decode(line);
+		return sendText(msg);
 	}
 }

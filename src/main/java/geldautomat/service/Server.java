@@ -7,7 +7,6 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import geldautomat.data.StringExpressions;
 
 public class Server {
     private final int port = 27999;
@@ -17,9 +16,10 @@ public class Server {
 	private BufferedReader reader;
 	private BufferedWriter writer;
 	private ServerSocket serverSocket;
-    private Integer currentCardNumber;
+    private int currentCardNumber;
 
-	public Server() {        		
+	public Server() {
+        currentCardNumber = 0;        		
         try {
 			this.serverSocket = new ServerSocket(port);
 			System.out.println(StringExpressions.PROMPT_WARTE);
@@ -48,8 +48,7 @@ public class Server {
 	}
 
 	private void handleRequests (final Socket socket, final BufferedReader reader, final BufferedWriter writer) {
-        currentCardNumber = null;
-        WithdrawalSession withdrawal = new WithdrawalSession();
+        ServerService serverService = new ServerService();
 		while (this.connected) {
             Message reply = null;
             try {
@@ -57,85 +56,48 @@ public class Server {
                 if(line !=null) {
                     Message msg = Message.decode(line);
                     String command = msg.getCommand();
-                    switch (command) {
-                        case StringExpressions.COMMAND_AUTH:
-                            if (withdrawal.hasPending()) {
-                                reply = new Message(StringExpressions.RESPONSE_ERROR);
+                    try {
+                        switch (command) {
+                            case StringExpressions.COMMAND_AUTH:
+                                int cardNumber = Integer.parseInt(msg.getParam()[0]);
+                                int pin = Integer.parseInt(msg.getParam()[1]);
+                                reply = serverService.authenticate(DatabaseManager.connect(), cardNumber, pin, msg.getParam());
+                                if(reply.getCommand().equals(StringExpressions.RESPONSE_OK))
+                                    currentCardNumber = cardNumber;
                                 break;
-                            }
-                            currentCardNumber = null;
-                            int cardNumber = Integer.parseInt(msg.getParam()[0]);
-                            int pin = Integer.parseInt(msg.getParam()[1]);
-                            boolean authenticated = false;
-                            try {
-                                ResultSet result = DatabaseManager.selectKunde(cardNumber);
-                                if (result.next() && result.getInt(StringExpressions.FIELD_PIN) == pin) {
-                                    authenticated = true;
-                                    currentCardNumber = result.getInt(StringExpressions.FIELD_KARTENNUMMER);
+        
+                            case StringExpressions.COMMAND_BALANCE:
+                                if (currentCardNumber == 0) {
+                                    reply = new Message(StringExpressions.RESPONSE_ERROR);
+                                    break;
                                 }
-                            } catch (SQLException e) {
-                                e.printStackTrace();
-                            }
-                            if (!authenticated) {
+                                reply = serverService.getBalance(DatabaseManager.connect(), currentCardNumber);
+                                break;
+        
+                            case StringExpressions.COMMAND_WITHDRAW:
+                                reply = serverService.withdraw(DatabaseManager.connect(), currentCardNumber, msg.getParam());
+                                break;
+                                
+                            case StringExpressions.COMMAND_DISPENSE:
+                                reply = serverService.dispense(DatabaseManager.connect(), currentCardNumber, msg.getParam());
+                                break;
+
+                            case StringExpressions.COMMAND_LOCK:
+                                reply = serverService.lock(DatabaseManager.connect(), Integer.parseInt(msg.getParam()[0]), msg.getParam());
+                                break;
+
+                            case StringExpressions.COMMAND_QUIT:
+                                currentCardNumber = 0;
+                                reply = new Message(StringExpressions.RESPONSE_OK);
+                                break;
+
+                            default:
                                 reply = new Message(StringExpressions.RESPONSE_ERROR);
                                 break;
-                            }
-                            reply = new Message(StringExpressions.RESPONSE_OK);
-                            break;
-    
-                        case StringExpressions.COMMAND_BALANCE:
-                            if (currentCardNumber == null) {
-                                reply = new Message(StringExpressions.RESPONSE_ERROR);
-                                break;
-                            }
-                            ResultSet result = null;
-                            try {
-                                result = DatabaseManager.selectBalanceByCardNumber(currentCardNumber);
-                            } catch (SQLException e) {
-                                e.printStackTrace();
-                            }
-                            int balance = 0;
-                            if (result != null && result.next()) {
-                                balance = result.getInt(StringExpressions.FIELD_BALANCE);
-                                reply = new Message(StringExpressions.RESPONSE_OK, balance + "");
-                            }
-                            break;
-    
-                        case StringExpressions.COMMAND_WITHDRAW:
-                            try {
-                                reply = withdrawal.withdraw(DatabaseManager.connect(), currentCardNumber, msg.getParam());
-                            } catch (SQLException e) {
-                                e.printStackTrace();
-                                reply = new Message(StringExpressions.RESPONSE_ERROR);
-                            }
-                            break;
-                            
-                        case StringExpressions.COMMAND_DISPENSE:
-                            try {
-                                reply = withdrawal.dispense(DatabaseManager.connect(), currentCardNumber, msg.getParam());
-                            } catch (SQLException e) {
-                                e.printStackTrace();
-                                reply = new Message(StringExpressions.RESPONSE_ERROR);
-                            }
-                            break;
-
-                        case StringExpressions.COMMAND_LOCK:
-                            int cardNumberToLock = Integer.parseInt(msg.getParam()[0]);
-                            try {
-                                DatabaseManager.lockKundeByCardNumber(cardNumberToLock);
-                            } catch (SQLException e) {
-                                e.printStackTrace();
-                            }
-                            reply = new Message(StringExpressions.RESPONSE_OK);
-                            break;
-
-                        case StringExpressions.COMMAND_QUIT:
-                            reply = new Message(StringExpressions.RESPONSE_OK);
-                            break;
-
-                        default:
-                            reply = new Message(StringExpressions.RESPONSE_ERROR);
-                            break;
+                        }
+                    } catch (SQLException e) {
+                        e.printStackTrace();
+                        reply = new Message(StringExpressions.RESPONSE_ERROR);
                     }
     
                     writer.write(reply.encode());
@@ -150,9 +112,7 @@ public class Server {
             catch (IOException e) {
                 System.out.println(e.getMessage());
                 return;
-            } catch (SQLException sqlException) {
-                sqlException.printStackTrace();
-            }
+            } 
 		}
 	}
 
@@ -180,14 +140,10 @@ public class Server {
                     System.out.println();
                 }
             } catch (SQLException e) {
-                // TODO Auto-generated catch block
                 e.printStackTrace();
             }
-        }
-        
+        }        
         Server server = new Server();
-		// SERVER.run_forever();
 		server.run_forever();
-
 	}
 }
