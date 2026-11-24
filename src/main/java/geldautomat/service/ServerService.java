@@ -1,8 +1,8 @@
 package geldautomat.service;
 
-import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Optional;
+import java.util.OptionalInt;
 
 class ServerService {
     private Long pendingId;
@@ -15,7 +15,7 @@ class ServerService {
     }
 
     // TODO checken ob noch offene Überweisungen da sind
-    protected Message authenticate(Connection connection, int cardNumber, int pin, String[] params) throws SQLException {
+    protected Message authenticate(int cardNumber, int pin, String[] params) throws SQLException {
         // Message reply = null;
         // if(serverService.hasPending()) {
         //     reply = new Message(StringExpressions.RESPONSE_ERROR);
@@ -23,10 +23,10 @@ class ServerService {
         // }
         boolean authenticated = false;
         try {
-            ResultSet result = DatabaseManager.selectKunde(cardNumber);
-            if(result.getBoolean(StringExpressions.FIELD_BLOCKED))
+            Optional<DatabaseManager.Kunde> kunde = DatabaseManager.selectKunde(cardNumber);
+            if (kunde.isPresent() && kunde.get().blocked())
                 return new Message(StringExpressions.RESPONSE_BLOCKED);
-            else if (result.next() && result.getInt(StringExpressions.FIELD_PIN) == pin) {
+            else if (kunde.isPresent() && kunde.get().pin() == pin) {
                 authenticated = true;
                 // currentCardNumber = result.getInt(StringExpressions.FIELD_KARTENNUMMER);
             } else {
@@ -48,22 +48,15 @@ class ServerService {
         return new Message(StringExpressions.RESPONSE_OK);
     }
 
-    protected Message getBalance(Connection connection, Integer cardNumber) throws SQLException {
-        ResultSet result = null;
-        Message reply = null;
-        try {
-            result = DatabaseManager.selectBalanceByCardNumber(cardNumber);
-        } catch (SQLException e) {
-            throw new SQLException(e);
+    protected Message getBalance(Integer cardNumber) throws SQLException {
+        OptionalInt balance = DatabaseManager.selectBalanceByCardNumber(cardNumber);
+        if (balance.isPresent()) {
+            return new Message(StringExpressions.RESPONSE_OK, Integer.toString(balance.getAsInt()));
         }
-        int balance = 0;
-        if (result != null && result.next()) {
-            balance = result.getInt(StringExpressions.FIELD_BALANCE);
-            reply = new Message(StringExpressions.RESPONSE_OK, balance + "");
-        }
-        return reply;
+        return new Message(StringExpressions.RESPONSE_ERROR);
     }
-    protected Message withdraw(Connection connection, Integer cardNumber, String[] params) throws SQLException {
+    
+    protected Message withdraw(Integer cardNumber, String[] params) throws SQLException {
         if (cardNumber == null || hasPending() || params.length != 2) {
             return new Message(StringExpressions.RESPONSE_ERROR);
         }
@@ -73,7 +66,7 @@ class ServerService {
             if (amount <= 0 || id <= 0 || !Long.toString(id).equals(params[1])) {
                 return new Message(StringExpressions.RESPONSE_ERROR, StringExpressions.STATUS_DECLINED);
             }
-            if (!DatabaseManager.approveWithdrawal(connection, id, cardNumber, amount)) {
+            if (!DatabaseManager.approveWithdrawal(id, cardNumber, amount)) {
                 return new Message(StringExpressions.RESPONSE_ERROR, StringExpressions.STATUS_DECLINED);
             }
             pendingId = id;
@@ -83,7 +76,7 @@ class ServerService {
         }
     }
 
-    protected Message dispense(Connection connection, Integer cardNumber, String[] params) throws SQLException {
+    protected Message dispense(Integer cardNumber, String[] params) throws SQLException {
         if (cardNumber == null || pendingId == null || params.length != 2
                 || !pendingId.toString().equals(params[0])) {
             return new Message(StringExpressions.RESPONSE_ERROR);
@@ -92,7 +85,7 @@ class ServerService {
         if (!dispensed && !params[1].equals(StringExpressions.STATUS_FAILED)) {
             return new Message(StringExpressions.RESPONSE_ERROR);
         }
-        if (!DatabaseManager.finishWithdrawal(connection, pendingId, cardNumber, dispensed)) {
+        if (!DatabaseManager.finishWithdrawal(pendingId, cardNumber, dispensed)) {
             return new Message(StringExpressions.RESPONSE_ERROR);
         }
         String id = pendingId.toString();
@@ -101,7 +94,7 @@ class ServerService {
                 dispensed ? StringExpressions.STATUS_COMMITTED : StringExpressions.STATUS_CANCELLED, id);
     }
 
-    protected Message lock(Connection connection, Integer cardNumber, String[] params) throws SQLException {
+    protected Message lock(Integer cardNumber, String[] params) throws SQLException {
         try {
             DatabaseManager.lockKundeByCardNumber(cardNumber);
         } catch (SQLException e) {

@@ -9,13 +9,17 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.OptionalInt;
 
 import geldautomat.data.SQLStatements;
 
 public class DatabaseManager {
     private static Connection connection = null;
 
-    public static Connection connect() throws SQLException {
+    private static Connection connect() throws SQLException {
         if (connection == null) {
             try {
                 Class.forName(StringExpressions.DB_INIT);
@@ -27,42 +31,80 @@ public class DatabaseManager {
         return connection;
     }
 
-    public static ResultSet selectAllFromKunden() throws SQLException {
-        PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_SELECT_ALL_FROM_KUNDEN);
-        return statement.executeQuery();
+    static {
+        try {
+            connection = connect();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
-    public static ResultSet selectKunde(int cardNumber) throws SQLException {
-        PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_SELECT_KUNDE_BY_CARD_NUMBER);
-        statement.setInt(1, cardNumber);
-        return statement.executeQuery();
+    public record Kunde(int pin, boolean blocked) {}
+
+    public static List<String> selectAllFromKunden() throws SQLException {
+        List<String> kunden = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_SELECT_ALL_FROM_KUNDEN);
+             ResultSet result = statement.executeQuery()) {
+            ResultSetMetaData metaData = result.getMetaData();
+            while (result.next()) {
+                StringBuilder row = new StringBuilder();
+                for (int i = 1; i <= metaData.getColumnCount(); i++) {
+                    if (i > 1) {
+                        row.append(", ");
+                    }
+                    row.append(metaData.getColumnName(i)).append("=").append(result.getObject(i));
+                }
+                kunden.add(row.toString());
+            }
+        }
+        return kunden;
     }
 
-    public static ResultSet selectBalanceByCardNumber(int cardNumber) throws SQLException {
-        PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_SELECT_BALANCE_BY_CARD_NUMBER);
-        statement.setInt(1, cardNumber);
-        return statement.executeQuery();
+    public static Optional<Kunde> selectKunde(int cardNumber) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_SELECT_KUNDE_BY_CARD_NUMBER)) {
+            statement.setInt(1, cardNumber);
+            try (ResultSet result = statement.executeQuery()) {
+                if (result.next()) {
+                    return Optional.of(new Kunde(
+                        result.getInt(StringExpressions.FIELD_PIN),
+                        result.getBoolean(StringExpressions.FIELD_BLOCKED)));
+                }
+                return Optional.empty();
+            }
+        }
+    }
+
+    public static OptionalInt selectBalanceByCardNumber(int cardNumber) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_SELECT_BALANCE_BY_CARD_NUMBER)) {
+            statement.setInt(1, cardNumber);
+            try (ResultSet result = statement.executeQuery()) {
+                if (result.next()) {
+                    return OptionalInt.of(result.getInt(StringExpressions.FIELD_BALANCE));
+                }
+                return OptionalInt.empty();
+            }
+        }
     }
 
     public static void lockKundeByCardNumber(int cardNumber) throws SQLException {
         System.out.println("nummer " + cardNumber);
-        PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_LOCK_KUNDE_BY_CARD_NUMBER);
-        statement.setInt(1, cardNumber);
-        statement.executeUpdate();
+        try (PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_LOCK_KUNDE_BY_CARD_NUMBER)) {
+            statement.setInt(1, cardNumber);
+            statement.executeUpdate();
+        }
     }
 
     public static void insertTransaktion(int transactionId, int cardNumber, int amount, String status) throws SQLException {
-        PreparedStatement statement = connection.prepareStatement(
-            SQLStatements.SQL_INSERT_TRANSFAKTION
-        );
-        statement.setInt(1, transactionId);
-        statement.setInt(2, cardNumber);
-        statement.setInt(3, amount);
-        statement.setString(4, status);
-        statement.executeUpdate();
+        try (PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_INSERT_TRANSFAKTION)) {
+            statement.setInt(1, transactionId);
+            statement.setInt(2, cardNumber);
+            statement.setInt(3, amount);
+            statement.setString(4, status);
+            statement.executeUpdate();
+        }
     }
 
-    static boolean approveWithdrawal(Connection connection, long id, int cardNumber, int amount) throws SQLException {
+    static boolean approveWithdrawal(long id, int cardNumber, int amount) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(SQLStatements.SQL_APPROVE_WITHDRAWAL)) {
             statement.setLong(1, id);
             statement.setInt(2, amount);
@@ -76,7 +118,7 @@ public class DatabaseManager {
         }
     }
 
-    static boolean finishWithdrawal(Connection connection, long id, int cardNumber, boolean dispensed) throws SQLException {
+    static boolean finishWithdrawal(long id, int cardNumber, boolean dispensed) throws SQLException {
         if (!connection.getAutoCommit()) {
             throw new SQLException(StringExpressions.DB_TRANSACTION_ACTIVE);
         }
@@ -156,17 +198,18 @@ public class DatabaseManager {
                     e.printStackTrace();
                 }
 
-                PreparedStatement statement = connection.prepareStatement(eingabe);
-                ResultSet result = statement.executeQuery();
-                ResultSetMetaData metaData = result.getMetaData();
-                while (result.next()) {
-                    for (int i = 1; i <= metaData.getColumnCount(); i++) {
-                        System.out.print(metaData.getColumnName(i) + "=" + result.getObject(i));
-                        if (i < metaData.getColumnCount()) {
-                            System.out.print(", ");
+                try (PreparedStatement statement = connection.prepareStatement(eingabe);
+                     ResultSet result = statement.executeQuery()) {
+                    ResultSetMetaData metaData = result.getMetaData();
+                    while (result.next()) {
+                        for (int i = 1; i <= metaData.getColumnCount(); i++) {
+                            System.out.print(metaData.getColumnName(i) + "=" + result.getObject(i));
+                            if (i < metaData.getColumnCount()) {
+                                System.out.print(", ");
+                            }
                         }
+                        System.out.println();
                     }
-                    System.out.println();
                 }
             }
 

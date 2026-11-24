@@ -3,9 +3,6 @@ package geldautomat.service;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 
 public class Server {
@@ -61,7 +58,7 @@ public class Server {
                             case StringExpressions.COMMAND_AUTH:
                                 int cardNumber = Integer.parseInt(msg.getParam()[0]);
                                 int pin = Integer.parseInt(msg.getParam()[1]);
-                                reply = serverService.authenticate(DatabaseManager.connect(), cardNumber, pin, msg.getParam());
+                                reply = serverService.authenticate(cardNumber, pin, msg.getParam());
                                 if(reply.getCommand().equals(StringExpressions.RESPONSE_OK))
                                     currentCardNumber = cardNumber;
                                 break;
@@ -71,19 +68,19 @@ public class Server {
                                     reply = new Message(StringExpressions.RESPONSE_ERROR);
                                     break;
                                 }
-                                reply = serverService.getBalance(DatabaseManager.connect(), currentCardNumber);
+                                reply = serverService.getBalance(currentCardNumber);
                                 break;
         
                             case StringExpressions.COMMAND_WITHDRAW:
-                                reply = serverService.withdraw(DatabaseManager.connect(), currentCardNumber, msg.getParam());
+                                reply = serverService.withdraw(currentCardNumber, msg.getParam());
                                 break;
                                 
                             case StringExpressions.COMMAND_DISPENSE:
-                                reply = serverService.dispense(DatabaseManager.connect(), currentCardNumber, msg.getParam());
+                                reply = serverService.dispense(currentCardNumber, msg.getParam());
                                 break;
 
                             case StringExpressions.COMMAND_LOCK:
-                                reply = serverService.lock(DatabaseManager.connect(), Integer.parseInt(msg.getParam()[0]), msg.getParam());
+                                reply = serverService.lock(Integer.parseInt(msg.getParam()[0]), msg.getParam());
                                 break;
 
                             case StringExpressions.COMMAND_QUIT:
@@ -118,31 +115,13 @@ public class Server {
 
 	public static void main(String[] args) {
         System.out.println("Starting server...");
-        Connection connection = null;
-		try {
-            connection = DatabaseManager.connect();
+        try {
+            for (String kunde : DatabaseManager.selectAllFromKunden()) {
+                System.out.println(kunde);
+            }
         } catch (SQLException e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
-
-        if (connection != null) {
-            try {
-                ResultSet result = DatabaseManager.selectAllFromKunden();
-                ResultSetMetaData metaData = result.getMetaData();
-                while (result.next()) {
-                    for (int i = 1; i <= metaData.getColumnCount(); i++) {
-                        System.out.print(metaData.getColumnName(i) + "=" + result.getObject(i));
-                        if (i < metaData.getColumnCount()) {
-                            System.out.print(", ");
-                        }
-                    }
-                    System.out.println();
-                }
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
-        }        
         Server server = new Server();
 		server.run_forever();
 	}
